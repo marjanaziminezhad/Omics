@@ -1,0 +1,46 @@
+*****Course Project Description – Connecting High-Throughput Datasets 2023*****
+
+###########################################    1     ################################################
+
+Step A: Selecting and Processing Amplicon Data
+
+In this step, we extract and process amplicon data from the research paper titled "Effects of lactic acid-producing bacteria as direct-fed microbials on the ruminal microbiome" by Monteiro HF et al. (J Dairy Sci, 2022). The goal is to select relevant amplicons and perform essential preprocessing tasks for further analysis. 
+Procedure:
+Four amplicons are randomly chosen from the research paper.These amplicon sequences are saved in the "accession.txt" file.
+Data Organization:
+
+Bash scripts are provided in the main directory to facilitate data processing and named "main".
+Additional folders are organized sequentially to streamline data manipulation.
+Files related to amplicon data processing are prefixed with the letter "A" for easy identification.
+The relevant results are located on in the "05_result" folder.
+
+###########################################    2     ################################################
+
+
+Step B: Mapping and Exploration of Amplicon Data
+
+In this step, we focus on mapping and exploring the selected amplicon data using R scripts. The "Projekt.Rmd" file contains the necessary code for abundance calculations and generating informative plots.
+
+
+###########################################    3     ################################################
+
+Step C. Comparative genomics
+
+In Step C, we went into comparative genomics by comparing two distinct genomes: Megasphaera_elsdenii_2410 and Megasphaera_hexanoica_MH. To facilitate this analysis, we employed the Prokka tool, and the results are stored in folder number 06. Multiple codes were utilized for processing the data, resulting in the existence of four different Prokka result folders. Initially, we conducted annotation and data processing in the "06_annotation_*" folders, followed by the generation of the "06_Prokka_*" folders, which contain the same data but were processed differently.
+
+In addition, for a comprehensive analysis and answers to the specific questions, w an R Markdown that includes detailed responses and plotsis included.
+
+###########################################    4     ################################################
+
+Step D. Project proposal based on your findings in Step A-C
+
+For an in-depth understanding of our findings in Steps A-C, please refer to the comprehensive project proposal available in the "Proposal.pdf" document.
+
+
+##########################################    FYI    ################################################
+
+To validate the results obtained from the Venn diagram generated in the R script, a Matplotlib Python script was employed.
+
+Additionally, a Gene Ontology (GO) script was developed to initiate the interpretation of the genomic data. It's worth noting that this script may still have some issues during execution, but it will be crucial for further exploring the functional annotations and biological implications of the identified genes.
+Both files are found in main folder.
+
