@@ -1,0 +1,7 @@
+organism: Megasphaera hexanoica strain 
+contigs: 1
+bases: 2877851
+tRNA: 54
+rRNA: 18
+CDS: 2730
+tmRNA: 1

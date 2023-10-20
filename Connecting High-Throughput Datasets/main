@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# Specify the directory where you want to download the files
+output_directory=~/cam_proj/A01_fastq
+
+# Specify the file containing the list of accession numbers
+accession_file=~/cam_proj/accessions.txt
+
+# Loop through each accession number and download the data
+while read -r accession; do
+  echo "Downloading $accession..."
+  fastq-dump --outdir $output_directory --gzip --skip-technical --readids --read-filter pass --dumpbase --split-3 --clip $accession
+done < $accession_file
+
+# Rename files 
+for f in *.fastq.gz; do
+  # Rename the files to match the Qiime format
+  mv "$f" "$(echo "$f" | sed 's/_1/_L001_R1_001/;s/_2/_L001_R2_001/')"
+done
+
+# Import the data into Qiime format
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path ~/cam_proj/A01_fastq \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path ~/cam_proj/A02_qiime/demux-paired-end.qza \
+
+# Summarize the demultiplexed sequences
+qiime demux summarize \
+  --i-data ~/cam_proj/A02_qiime/demux-paired-end.qza \
+  --o-visualization ~/cam_proj/A02_qiime/demux-paired-end.qzv
+  
+# Perform denoising using DADA2
+qiime dada2 denoise-paired \
+  --i-demultiplexed-seqs ~/cam_proj/A02_qiime/demux-paired-end.qza \
+  --p-trim-left-f 20 \
+  --p-trim-left-r 20 \
+  --p-trunc-len-f 250 \
+  --p-trunc-len-r 190 \
+  --p-n-threads 80 \
+  --o-representative-sequences ~/cam_proj/A02_qiime/rep-seqs-dada2.qza \
+  --o-table ~/cam_proj/A02_qiime/table-dada2.qza \
+  --o-denoising-stats ~/cam_proj/A02_qiime/stats-dada2.qza
+  
+# Export the DADA2 results
+qiime tools export \
+  --input-path ~/cam_proj/A02_qiime/table-dada2.qza \
+  --output-path ~/cam_proj/A02_qiime/exported-table
+  
+# Convert the biom file to TSV format
+biom convert \
+  -i ~/cam_proj/A02_qiime/exported-table/feature-table.biom \
+  -o ~/cam_proj/A02_qiime/exported-table/feature-table.tsv \
+  --to-tsv
+
+# Create BLAST databases for the genomes
+makeblastdb -in Megasphaera_elsdenii_2410.fasta -dbtype nucl -out ~/cam_proj/04_blast/Megasphaera_elsdenii_2410_db
+makeblastdb -in Megasphaera_hexanoica_MH.fasta -dbtype nucl -out ~/cam_proj/04_blast/Megasphaera_hexanoica_MH_db
+
+# BLAST against Megasphaera_elsdenii
+blastn -query ~/cam_proj/A02_qiime/exported-rep-seqs/dna-sequences.fasta -db ~/cam_proj/04_blast/Megasphaera_elsdenii_2410_db -evalue 0.005 -outfmt "6 qseqid sseqid pident length qlen evalue bitscore" -out ~/cam_proj/05_result/ASV_vs_genomes_elsdenii.txt
+
+# BLAST against Megasphaera_hexanoica
+blastn -query ~/cam_proj/A02_qiime/exported-rep-seqs/dna-sequences.fasta -db ~/cam_proj/04_blast/Megasphaera_hexanoica_MH_db -evalue 0.005 -outfmt "6 qseqid sseqid pident length qlen evalue bitscore" -out ~/cam_proj/05_result/ASV_vs_genomes_hexanoica.txt
+
+# Comparative genomics with PROKKA
+prokka --outdir ~/cam_proj/06_prokka_e --genus Megasphaera --species elsdenii --locustag PROKKA_ME /home/fhwn.ac.at/123242/cam_proj/03_genomes/Megasphaera_elsdenii_2410.fa
+
+prokka --outdir ~/cam_proj/06_prokka_h --genus Megasphaera --species hexanoica --locustag  PROKKA_MH /home/fhwn.ac.at/123242/cam_proj/03_genomes/Megasphaera_hexanoica_MH.fa

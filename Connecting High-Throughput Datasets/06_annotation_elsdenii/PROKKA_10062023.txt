@@ -1,0 +1,8 @@
+organism: Megasphaera elsdenii strain 
+contigs: 1
+bases: 2566193
+CDS: 2324
+tmRNA: 1
+repeat_region: 7
+rRNA: 21
+tRNA: 66
