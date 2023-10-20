@@ -1,46 +1,42 @@
-*****Course Project Description – Connecting High-Throughput Datasets 2023*****
+# FHWN Tulln - Practice - Workflow Bio Data Science
 
-###########################################    1     ################################################
+## Workflow Overview
 
-Step A: Selecting and Processing Amplicon Data
+The project consists of several distinct workflows, each serving a specific purpose. Here's an overview of the workflows and their respective steps:
 
-In this step, we extract and process amplicon data from the research paper titled "Effects of lactic acid-producing bacteria as direct-fed microbials on the ruminal microbiome" by Monteiro HF et al. (J Dairy Sci, 2022). The goal is to select relevant amplicons and perform essential preprocessing tasks for further analysis. 
-Procedure:
-Four amplicons are randomly chosen from the research paper.These amplicon sequences are saved in the "accession.txt" file.
-Data Organization:
+### Raw Data Preparation
 
-Bash scripts are provided in the main directory to facilitate data processing and named "main".
-Additional folders are organized sequentially to streamline data manipulation.
-Files related to amplicon data processing are prefixed with the letter "A" for easy identification.
-The relevant results are located on in the "05_result" folder.
+1. **Align Reads to Reference Genome**: Align raw sequencing reads to a reference genome using a tool such as STAR.
 
-###########################################    2     ################################################
+2. **Index BAM Files**: Create an index of the resulting BAM files to facilitate data retrieval.
 
+3. **Check Alignment**: Ensure the alignment quality and correctness using various quality control tools.
 
-Step B: Mapping and Exploration of Amplicon Data
+4. **bamToFastq - FASTQ**: Convert BAM files back to FASTQ format if needed.
 
-In this step, we focus on mapping and exploring the selected amplicon data using R scripts. The "Projekt.Rmd" file contains the necessary code for abundance calculations and generating informative plots.
+### Data Quality Assessment
 
+5. **STAR Aligner**: Utilize the STAR aligner to align reads to a reference genome.
 
-###########################################    3     ################################################
+6. **FastQC**: Assess the quality of sequencing reads with FastQC.
 
-Step C. Comparative genomics
+7. **Trimmomatic**: Perform read trimming and quality filtering using Trimmomatic.
 
-In Step C, we went into comparative genomics by comparing two distinct genomes: Megasphaera_elsdenii_2410 and Megasphaera_hexanoica_MH. To facilitate this analysis, we employed the Prokka tool, and the results are stored in folder number 06. Multiple codes were utilized for processing the data, resulting in the existence of four different Prokka result folders. Initially, we conducted annotation and data processing in the "06_annotation_*" folders, followed by the generation of the "06_Prokka_*" folders, which contain the same data but were processed differently.
+8. **FastQC (Post-Trimming)**: Re-run FastQC to evaluate the quality of reads after trimming.
 
-In addition, for a comprehensive analysis and answers to the specific questions, w an R Markdown that includes detailed responses and plotsis included.
+9. **Samtools Index**: Index the processed BAM files for further analysis.
 
-###########################################    4     ################################################
+### Quantification and Differential Expression
 
-Step D. Project proposal based on your findings in Step A-C
+10. **Raw Reads - BAM**: Prepare and organize the raw sequencing reads for further analysis.
 
-For an in-depth understanding of our findings in Steps A-C, please refer to the comprehensive project proposal available in the "Proposal.pdf" document.
+11. **Qualimap**: Assess the quality of read mapping using Qualimap.
 
+12. **Quantification**: Quantify gene expression using tools like featureCounts.
 
-##########################################    FYI    ################################################
+13. **Differential Expression (DESeq2)**: Perform differential expression analysis using DESeq2.
 
-To validate the results obtained from the Venn diagram generated in the R script, a Matplotlib Python script was employed.
+### Functional Analysis
 
-Additionally, a Gene Ontology (GO) script was developed to initiate the interpretation of the genomic data. It's worth noting that this script may still have some issues during execution, but it will be crucial for further exploring the functional annotations and biological implications of the identified genes.
-Both files are found in main folder.
+14. **Functional Analysis (Cluster Profiler)**: Conduct functional analysis using Cluster Profiler to gain insights into biological functions and pathways.
 
