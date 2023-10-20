@@ -1,0 +1,153 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r initialize_project}
+source("InitializeProject.R")
+library(tidyverse)
+library(magrittr)
+```
+
+```{r MSStats_Analysis}
+library(MSstats)
+library(limma)
+
+library(org.Hs.eg.db)
+library(clusterProfiler)
+
+keytype <- "UNIPROT"
+keys <- keys(org.Hs.eg.db, keytype = keytype)
+
+fdata <- AnnotationDbi::select(org.Hs.eg.db, 
+                               columns =c("ENTREZID", "UNIPROT", "GENENAME", "SYMBOL"),
+                               keys = keys,
+                               keytype = keytype) %>%
+  group_by(UNIPROT) %>%
+  summarise(ENTREZID = paste(unique(ENTREZID), collapse = ", "),
+            GENENAME = paste(unique(GENENAME), collapse = ", "),
+            SYMBOL = paste(unique(SYMBOL), collapse = ", "))
+
+
+data <- rio::import(here::here(datadir, "MSSTATS", "MSstats_conventional_transfer.csv"))
+
+data_msstats <- data %>%
+  OpenMStoMSstatsFormat(annotation = NULL,
+                        useUniquePeptide = TRUE,
+                        removeFewMeasurements = TRUE,
+                        removeProtein_with1Feature = FALSE,
+                        summaryforMultipleRows = max,
+                        use_log_file = TRUE,
+                        append = FALSE,
+                        verbose = TRUE,
+                        log_file_path = NULL)
+
+QuantData <- dataProcess(data_msstats)
+
+
+
+factor <- QuantData$ProteinLevelData$GROUP
+
+design_matrix <- model.matrix(~0+factor)
+colnames(design_matrix) <- levels(factor)
+
+
+contrast_matrix <- makeContrasts(CBN772_vs_CONTROL = CBN772 - CONTROL,
+                                 CBN550_vs_CONTROL = CBN550 - CONTROL,
+                                 CBN375_vs_CONTROL = CBN375 - CONTROL,
+                                 ASHRAE_vs_CONTROL = ASHRAE - CONTROL,
+                                 ASFINE_vs_CONTROL = ASFINE - CONTROL,
+                                 levels = colnames(design_matrix))
+
+contrast_matrix_msstats <- contrast_matrix %>% t
+
+# Tests for differentially abundant proteins with models:
+testResultOneComparison <- groupComparison(contrast.matrix=contrast_matrix_msstats,
+                                           data=QuantData)
+
+comparisonResult <- testResultOneComparison$ComparisonResult %>%
+  mutate(Protein = str_replace(Protein, "sp\\|", ""),
+         Protein = str_replace(Protein, "tr\\|", "")) %>%
+  separate(Protein, sep = "\\|", into = c("UNIPROT", "UNIPROT_SYMBOL")) %>%
+  dplyr::select(-UNIPROT_SYMBOL) %>%
+  inner_join(fdata) %>%
+  dplyr::select(UNIPROT, ENTREZID, SYMBOL, GENENAME, everything())
+
+colnames(comparisonResult) <- c("UNIPROT",
+                                "ENTREZID",
+                                "SYMBOL",
+                                "GENENAME",
+                                "Label",
+                                "log2FoldChange",
+                                "lfcse",
+                                "stat",
+                                "DF",
+                                "pvalue", 
+                                "padj",
+                                "issue",
+                                "MissingPercentage",
+                                "ImputationPercentage")
+
+comparisonResult_list <- comparisonResult %>%
+  tidyr::nest(gg = -"Label") %>%
+  deframe %>%
+  purrr::map(data.frame) %>%
+  purrr::map(function(x){
+    result <- x %>%
+      dplyr::filter(!is.na(log2FoldChange))
+    result[result == -Inf] <- -10
+    result[result == Inf] <- 10
+    return(result)
+  })
+
+comparisonResult_list %>%
+  rio::export(here::here(resultsdir, "result_MSstats.xlsx"))
+
+logFC <- comparisonResult_list$CBN772_vs_CONTROL %>%
+  dplyr::select(ENTREZID, log2FoldChange) %>%
+  arrange(desc(log2FoldChange)) %>%
+  drop_na() %>%
+  deframe
+
+
+
+
+ego <-  comparisonResult_list %>%
+  purrr::map(function(x){
+    x %>%
+      dplyr::select(ENTREZID) %>%
+      drop_na() %>%
+      deframe %>%
+      enrichGO(# universe      = names(geneList),
+               OrgDb         = org.Hs.eg.db,
+               ont           = "BP",
+               pAdjustMethod = "BH",
+               pvalueCutoff  = 1,
+               qvalueCutoff  = 1,
+               readable      = TRUE)})
+  
+ego_result <- ego %>%
+  purrr::map(data.frame)
+
+ego_result %>%
+  rio::export(here::here(resultsdir, "result_ego.xlsx"))
+
+
+gseaKEGG <- comparisonResult_list %>%
+  purrr::map(function(x){
+    x %>%
+      dplyr::select(ENTREZID, log2FoldChange) %>%
+      arrange(desc(log2FoldChange)) %>%
+      drop_na() %>%
+      deframe %>%
+      gseKEGG(organism = "hsa",
+              minGSSize = 10,
+              pvalueCutoff = 1,
+              verbose = FALSE)})
+
+gseaKEGG_result <- gseaKEGG %>%
+  purrr::map(data.frame)
+
+gseaKEGG_result %>%
+  rio::export(here::here(resultsdir, "result_gseaKEGG.xlsx"))
+```
+

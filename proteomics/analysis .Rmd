@@ -1,0 +1,290 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r initialize_project}
+#source("InitializeProject.R")
+library(tidyverse)
+library(magrittr)
+```
+
+```{r load_data}
+library(Biobase)
+data <- rio::import(here::here(datadir, "combined_protein.xls"))
+feature_annotation <- data %>%
+  dplyr::select(Protein,
+                'Protein ID',
+                'Entry Name',
+                'Gene',
+                'Protein Length',
+                'Organism',
+                'Protein Existence',
+                'Description',
+                'Protein Probability',
+                'Top Peptide Probability') %>%
+  mutate(rowname = Gene) %>%
+  column_to_rownames()
+
+assayData <- data %>%
+  dplyr::select(Gene, ends_with("Intensity")) %>%
+  column_to_rownames("Gene")
+
+colnames(assayData) <- colnames(assayData) %>%
+  str_replace(" Intensity", "")
+
+assayData[assayData == 0] <- 1
+
+assayData <- assayData %>% 
+  log2
+
+sample_annotation <- rio::import(here::here(datadir, "design.tsv"))
+
+sample_annotation <- sample_annotation %>%
+  dplyr::select(Spectra_Filepath, MSstats_Condition) %>%
+  set_colnames(c("Spectra_Filepath", "CONDITION")) %>%
+  mutate(SAMPLEID = str_replace(Spectra_Filepath, "\\.mzML", "")) %>%
+  mutate(rowname = SAMPLEID) %>%
+  column_to_rownames()
+
+eset <- ExpressionSet(as.matrix(assayData))
+
+pData(eset) <- sample_annotation[sampleNames(eset),]
+fData(eset) <- feature_annotation[featureNames(eset),]
+
+eset %>%
+  rio::export(here::here(datadir, "eset.RDS"))
+```
+
+```{r limma}
+library(limma)
+
+eset <- rio::import(here::here(datadir, "eset.RDS"))
+
+eset$CONDITION <- factor(eset$CONDITION,
+                         levels = c("CONTROL", 
+                                    "ASFINE", 
+                                    "ASHRAE", 
+                                    "CBN772", 
+                                    "CBN550", 
+                                    "CBN375"))
+
+design <- model.matrix(~0 + CONDITION,
+                       data = eset)
+colnames(design) <- levels(eset$CONDITION)
+
+contrasts <- list(ASHRAE_vs_CONTROL = "ASHRAE - CONTROL")
+
+contrast_matrix <- makeContrasts(contrasts = contrasts,
+                                 levels = design)
+
+colnames(contrast_matrix) <- names(contrasts)
+
+fit <- eset %>%
+  lmFit(design) %>%
+  contrasts.fit(contrast_matrix) %>%
+  eBayes
+
+coefs <- names(contrasts) %>%
+  set_names(.,.)
+
+results <- coefs %>%
+  purrr::map(function(coef, fit){
+    topTable(fit, 
+             coef = coef, 
+             number = Inf)
+  },
+  fit = fit)
+
+results %>%
+  rio::export(here::here(resultsdir, "limma_results.xlsx"))
+```
+
+```{r clusterProfiler}
+library(clusterProfiler)
+library(msigdbr)
+
+results <- rio::import_list(here::here(resultsdir, "limma_results.xlsx"))
+
+msigdb <- msigdbr(species = "Homo sapiens")
+
+term2gene <- msigdb %>%
+  dplyr::filter(gs_cat == "C2") %>%
+  dplyr::select(gs_id, gene_symbol)
+
+term2name <- msigdb %>%
+  dplyr::select(gs_id, gs_name) %>%
+  unique
+result_list <- list(result1 = df)
+
+enrichment <- results %>%
+  purrr::map(function(result, term2gene, term2name){
+    genes <- result %>%
+      dplyr::filter(adj.P.Val < 0.05) %>%
+      dplyr::select(Gene) %>%
+      deframe
+    enricher(genes, 
+             TERM2GENE = term2gene,
+             TERM2NAME = term2name,
+             pvalueCutoff = 1,
+             qvalueCutoff = 1)
+  },
+  term2gene = term2gene,
+  term2name = term2name)
+
+enrichment %>%
+  purrr::map(data.frame) %>%
+  rio::export(here::here(resultsdir, "enricher_results.xlsx"))
+
+dotplots <- enrichment %>%
+  purrr::map(dotplot)
+
+dotplots %>%
+  purrr::map2(names(.),
+              function(plot, name){
+                filename <- here::here(plotsdir, paste0(name, "_dotplot.pdf"))
+                ggsave(filename,
+                       plot,
+                       width = 8,
+                       height = 8)
+                
+  })
+cnetplot <- enrichment %>%
+  purrr::map(~cnetplot(.))  # Die Funktion cnetplot wird auf jedes Element in der enrichment-Liste angewendet
+
+purrr::imap(cnetplot,
+            function(plot, name){
+              filename <- here::here(plotsdir, paste0(name, "_cnetplot.pdf"))
+              ggsave(filename,
+                     plot,
+                     width = 8,
+                     height = 8)
+            })
+
+
+```
+
+```{r gsva}
+library(GSVA)
+library(msigdbr)
+
+eset <- rio::import(here::here(datadir, "eset.RDS"))
+
+msigdb <- msigdbr(species = "Homo sapiens")
+
+term2gene <- msigdb %>%
+  dplyr::select(gs_id, gene_symbol) %>%
+  tidyr::nest(gg = -"gs_id") %>%
+  deframe %>%
+  purrr::map(deframe)
+
+term2name <- msigdb %>%
+  dplyr::select(gs_id, gs_cat, gs_subcat, gs_name, gs_exact_source) %>%
+  distinct %>%
+  mutate(rowname = gs_id) %>%
+  column_to_rownames()
+
+gsva <- gsva(eset,
+             gset.idx.list = term2gene)
+
+fData(gsva) <- term2name[featureNames(gsva),]
+
+gsva %>%
+  rio::export(here::here(datadir, "eset_gsva.RDS"))
+```
+
+```{r limma_gsva}
+library(limma)
+
+gsva <- rio::import(here::here(datadir, "eset_gsva.RDS"))
+
+gsva$CONDITION <- factor(gsva$CONDITION,
+                         levels = c("CONTROL", 
+                                    "ASFINE", 
+                                    "ASHRAE", 
+                                    "CBN772", 
+                                    "CBN550", 
+                                    "CBN375"))
+
+design <- model.matrix(~0 + CONDITION,
+                       data = gsva)
+colnames(design) <- levels(gsva$CONDITION)
+
+contrasts <- list(CBN375_vs_CONTROL = "CBN375 - CONTROL")
+
+contrast_matrix <- makeContrasts(contrasts = contrasts,
+                                 levels = design)
+
+colnames(contrast_matrix) <- names(contrasts)
+
+fit <- gsva %>%
+  lmFit(design) %>%
+  contrasts.fit(contrast_matrix) %>%
+  eBayes
+
+coefs <- names(contrasts) %>%
+  set_names(.,.)
+
+results <- coefs %>%
+  purrr::map(function(coef, fit){
+    topTable(fit, 
+             coef = coef, 
+             number = Inf)
+  },
+  fit = fit)
+
+results %>%
+  rio::export(here::here(resultsdir, "CBN375_gsva_results.xlsx"))
+```
+
+```{r}
+
+
+```
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(EnhancedVolcano)
+library(here)
+
+# Pfade zu den Dateien festlegen
+results_file <- here::here(resultsdir, "gsva_results.xlsx")
+
+# Daten aus der Excel-Datei lesen
+results <- readxl::read_excel(results_file)
+
+# Überprüfen, ob die Spalte "gs_id" in den Ergebnisdaten enthalten ist
+if ("gs_id" %in% colnames(results)) {
+  # Enhanced Volcano Plot erstellen und "lab" auf "gs_id" setzen
+  enhanced_volcano <- EnhancedVolcano(results,
+                                      lab = results$gs_id,
+                                      x = 'logFC',
+                                      y = 'adj.P.Val',
+                                      title = 'title',
+                                      pCutoff = 0.05,
+                                      FCcutoff = 1,
+                                      pointSize = 3.0,
+                                      labSize = 4.0)
+  
+  plot_file <- here::here(plotsdir, "ASFINE_enhanced_volcano_plot.pdf")
+  ggsave(plot_file, enhanced_volcano, width = 10, height = 10)
+} else {
+  # Fehlermeldung, falls die Spalte "gs_id" nicht gefunden wurde
+  stop("Spalte 'gs_id' nicht in den Ergebnisdaten gefunden.")
+}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
